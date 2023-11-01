@@ -4,16 +4,19 @@ var smoothingRadius = 20;
 
 var targetDensity = 20;
 
-var pressureMultiplier = 50;
+var pressureMultiplier = 100;
 
 var gravity = 0.05;
+
+const chunkSize = smoothingRadius*2;
+var chunks = {};
 
 window.onload = init;
 
 async function init() {
     fixCanvas();
 
-    spawnParticles(500);
+    spawnParticles(2000);
     particles.forEach(e => e.density = calculateDensity(e.x,e.y));
 
     update();
@@ -42,7 +45,7 @@ function render() {
     particles.forEach(e => e.updatePosition());
     particles.forEach(e => e.draw());
     particles.forEach(e => {
-        drawCircle(e.x,e.y,5,"black")
+        //drawCircle(e.x,e.y,5,"black")
     })
 };
 
@@ -75,11 +78,20 @@ function calculateDensity(x,y){
     let density = 0;
     const mass = 100;
 
-    particles.forEach(particle => {
-        let dst = distance(particle.x,particle.y,x,y);
-        let influence = smoothingKernel(dst,smoothingRadius);
-        density += mass * influence;
-    })
+    let chunkRadiusThing = Math.ceil(smoothingRadius / chunkSize);
+    let chunkX = Math.floor(x/chunkSize)
+    let chunkY = Math.floor(y/chunkSize)
+    for(let tmpX = chunkX - chunkRadiusThing; tmpX < chunkX+chunkRadiusThing*2; tmpX++){
+        for(let tmpY = chunkY - chunkRadiusThing; tmpY < chunkY+chunkRadiusThing*2; tmpY++){
+            for(let i = 0; i< chunks[tmpX+","+tmpY]?.length; i++){
+                let particle = chunks[tmpX+","+tmpY][i];
+                let dst = distance(particle.x,particle.y,x,y);
+                let influence = smoothingKernel(dst,smoothingRadius);
+                density += mass * influence;
+            }
+        }
+    }
+
     return density
 }
 function convertDensityToPressure(density){
@@ -93,22 +105,27 @@ function calculatePressureForce(particleIndex){
         x:0,
         y:0
     }
-
-    for(let i = 0; i< particles.length; i++){
-        if(particleIndex == i) continue;
-
-        let particle = particles[i];
-        let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
-        let dir = {
-            x:(dst == 0) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
-            y:(dst == 0) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
+    let chunkRadiusThing = Math.ceil(smoothingRadius / chunkSize);
+    for(let x = particles[particleIndex].chunkX - chunkRadiusThing; x < particles[particleIndex].chunkX+chunkRadiusThing*2; x++){
+        for(let y = particles[particleIndex].chunkY - chunkRadiusThing; y < particles[particleIndex].chunkY+chunkRadiusThing*2; y++){
+            for(let i = 0; i< chunks[x+","+y]?.length; i++){
+                if(particles[particleIndex] == chunks[x+","+y][i]) continue;
+                let particle = chunks[x+","+y][i];
+                let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
+                let dir = {
+                    x:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
+                    y:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
+                }
+                let slope = smoothingKernelDerivative(dst,smoothingRadius);
+                if(slope == 0) continue
+                let density = particle.density;
+                let sharedPressure = calculateSharedPressure(density,particles[particleIndex].density);
+                pressureForce.x += (density != 0) ? (-sharedPressure * dir.x * slope * mass / density) : 0;
+                pressureForce.y += (density != 0) ? (-sharedPressure * dir.y * slope * mass / density) : 0;
+            }
         }
-        let slope = smoothingKernelDerivative(dst,smoothingRadius);
-        let density = particle.density;
-        let sharedPressure = calculateSharedPressure(density,particles[particleIndex].density);
-        pressureForce.x += (density != 0) ? (-sharedPressure * dir.x * slope * mass / density) : 0;
-        pressureForce.y += (density != 0) ? (-sharedPressure * dir.y * slope * mass / density) : 0;
     }
+        
     return pressureForce;
 }
 
@@ -153,11 +170,18 @@ class Particle{
             x:x,
             y:y
         }
+        this.chunkX = Math.floor(this.x / chunkSize);
+        this.chunkY = Math.floor(this.y / chunkSize);
+
+        if(!chunks[this.chunkX + "," + this.chunkY]){
+            chunks[this.chunkX + "," + this.chunkY] = [];
+        }
+        chunks[this.chunkX + "," + this.chunkY].push(this); 
     }
     draw(){
         let grd = c.createRadialGradient(this.x, this.y,0, this.x, this.y, smoothingRadius);
-        grd.addColorStop(0, "rgba(255,0,0,0.1)");
-        grd.addColorStop(1, "rgba(255,0,0,0)");
+        grd.addColorStop(0, "rgba(0,0,255,0.5)");
+        grd.addColorStop(1, "rgba(0,0,200,0)");
         drawCircle(this.x,this.y,smoothingRadius,grd)
     }
     predictPosition(){
@@ -189,6 +213,17 @@ class Particle{
     updatePosition(){
         this.x += this.vx;
         this.y += this.vy;
+
+        if(this.chunkX != Math.floor(this.x / chunkSize) || this.chunkY != Math.floor(this.y / chunkSize)){
+            chunks[this.chunkX + "," + this.chunkY].splice(chunks[this.chunkX + "," + this.chunkY].indexOf(this),1);
+            this.chunkX = Math.floor(this.x / chunkSize);
+            this.chunkY = Math.floor(this.y / chunkSize);
+            if(!chunks[this.chunkX + "," + this.chunkY]){
+                chunks[this.chunkX + "," + this.chunkY] = [];
+            }
+            chunks[this.chunkX + "," + this.chunkY].push(this); 
+        }
+
 
         if(this.x+ this.radius> canvas.width || this.x- this.radius< 0 ){
             this.x -= this.vx;
