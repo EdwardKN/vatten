@@ -20,7 +20,7 @@ window.onload = init;
 async function init() {
     fixCanvas();
 
-    spawnParticles(1000);
+    spawnParticles(1800);
     particles.forEach(e => e.density = calculateDensity(e.x,e.y));
 
     update();
@@ -183,10 +183,11 @@ class Particle{
         chunks[this.chunkX + "," + this.chunkY].push(this); 
     }
     draw(){
-        let grd = c.createRadialGradient(this.x, this.y,0, this.x, this.y, smoothingRadius);
-        grd.addColorStop(0, "rgba(0,0,255,0.5)");
-        grd.addColorStop(1, "rgba(0,0,200,0)");
-        drawCircle(this.x,this.y,smoothingRadius,grd)
+        let grd = c.createRadialGradient(this.x, this.y,0, this.x, this.y, smoothingRadius*2);
+        grd.addColorStop(0, "rgba(0,0,255,0.2)");
+        grd.addColorStop(0.5, "rgba(0,0,255,0.1)");
+        grd.addColorStop(1, "rgba(0,0,255,0)");
+        drawCircle(this.x,this.y,smoothingRadius*2,grd)
     }
     predictPosition(){
         this.vy += gravity*velocityMultiplier;
