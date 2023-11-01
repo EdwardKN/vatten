@@ -8,7 +8,11 @@ var pressureMultiplier = 100;
 
 var gravity = 0.05;
 
-const chunkSize = smoothingRadius*2;
+
+const velocityMultiplier = 1;
+const bounceFactor = 0.8;
+
+const chunkSize = smoothingRadius*4;
 var chunks = {};
 
 window.onload = init;
@@ -16,7 +20,7 @@ window.onload = init;
 async function init() {
     fixCanvas();
 
-    spawnParticles(2000);
+    spawnParticles(1000);
     particles.forEach(e => e.density = calculateDensity(e.x,e.y));
 
     update();
@@ -113,8 +117,8 @@ function calculatePressureForce(particleIndex){
                 let particle = chunks[x+","+y][i];
                 let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
                 let dir = {
-                    x:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
-                    y:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
+                    x:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
+                    y:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
                 }
                 let slope = smoothingKernelDerivative(dst,smoothingRadius);
                 if(slope == 0) continue
@@ -146,8 +150,8 @@ function getInteractionForce(inputPos,radius,strength,particle){
 
         let centreT = 1 - dst / radius;
 
-        force.x = dirX * (strength == 3 ? 1 : -1) - particle.vx * centreT
-        force.y = dirY * (strength == 3 ? 1 : -1) - particle.vy * centreT
+        force.x = dirX * (strength == 3 ? 2 : -2) - particle.vx * centreT
+        force.y = dirY * (strength == 3 ? 2 : -2) - particle.vy * centreT
         
     }
     return force
@@ -185,7 +189,7 @@ class Particle{
         drawCircle(this.x,this.y,smoothingRadius,grd)
     }
     predictPosition(){
-        this.vy += gravity;
+        this.vy += gravity*velocityMultiplier;
         this.predictedPosition = {
             x:this.x + this.vx,
             y:this.y + this.vy
@@ -201,11 +205,11 @@ class Particle{
             y:0
         }
         if(mouse.down){
-            interactionForce = getInteractionForce(mouse,100,mouse.which,this)
+            interactionForce = getInteractionForce(mouse,200,mouse.which,this)
         }
         if(this.density !== 0){
-            this.vx += pressureForce.x / this.density + interactionForce.x;
-            this.vy += pressureForce.y / this.density + interactionForce.y;
+            this.vx += (pressureForce.x / this.density + interactionForce.x)*velocityMultiplier;
+            this.vy += (pressureForce.y / this.density + interactionForce.y)*velocityMultiplier
         }
         this.vx = this.vx.clamp(-10,10)
         this.vy = this.vy.clamp(-10,10)
@@ -227,11 +231,11 @@ class Particle{
 
         if(this.x+ this.radius> canvas.width || this.x- this.radius< 0 ){
             this.x -= this.vx;
-            this.vx *= -0.95;
+            this.vx *= -bounceFactor;
         }
         if(this.y+ this.radius> canvas.height || this.y- this.radius< 0 ){
             this.y -= this.vy;
-            this.vy *= -0.95;
+            this.vy *= -bounceFactor;
         }
     }
 
