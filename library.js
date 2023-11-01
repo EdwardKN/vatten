@@ -380,8 +380,8 @@ function randomIntFromRange(min, max) {
 
 
 var times = [];
-var fps;
-var deltaTime = 0;
+var fps = 60;
+var deltaTime = 1;
 
 function refreshLoop() {
     window.requestAnimationFrame(function () {
@@ -391,7 +391,7 @@ function refreshLoop() {
         }
         times.push(now);
         fps = times.length;
-        deltaTime = 60 / (fps == 0 ? 1 / Infinity : fps);
+        //deltaTime = 60 / fps;
         refreshLoop();
     });
 }
