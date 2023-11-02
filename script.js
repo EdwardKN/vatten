@@ -2,35 +2,37 @@ var particles = [];
 
 var smoothingRadius = 30;
 
-var targetDensity = 20;
+var targetDensity = 10;
 
-var pressureMultiplier = 100;
+var pressureMultiplier = 120;
 
 var gravity = 0.05;
 
-var viscosityStrength = 1
+var viscosityStrength = 5
 
-var nearPressureMultiplier = 10;
+var nearPressureMultiplier = 20;
 
 
 const velocityMultiplier = 1;
 const bounceFactor = 0.8;
 
 const chunkSize = smoothingRadius;
-var chunks = {};
+
+var spacialLookup = [];
+var startIndices = [];
 
 window.onload = init;
 
 async function init() {
     fixCanvas();
 
-    spawnParticles(1500);
+    spawnParticles(2000);
     particles.forEach(e => {
         let tmp = calculateDensity(e.x,e.y)
         e.density = tmp.density
         e.nearDensity = tmp.nearDensity;
     });
-
+    updateSpacialLookup()
     update();
 
 };
@@ -61,8 +63,8 @@ function update(){
 
 function spawnParticles(amount){
     for(let i = 0; i < amount; i++){
-        let x = randomIntFromRange(200,canvas.width-200)
-        let y = randomIntFromRange(200,canvas.height-200)
+        let x = randomIntFromRange(20,canvas.width-20)
+        let y = randomIntFromRange(400,canvas.height-20)
         let particle = new Particle(x,y,particles.length);
 
         particles.push(particle);
@@ -83,8 +85,9 @@ function smoothingKernelDerivative(dst,radius){
     return (dst-radius) * scale
 }
 function viscositySmoothingKernel(dst,radius){
+    let volume = Math.PI * Math.pow(radius,8) / 4;
     let value = Math.max(0,radius*radius - dst * dst);
-    return value*value*value
+    return value*value*value / volume
 }
 
 function nearSmoothingKernel(dst,radius){
@@ -95,31 +98,18 @@ function nearSmoothingKernel(dst,radius){
 }
 
 function calculateDensity(x,y){
+
     let density = 0;
-    let nearDensity = 0;
+    let nearDensity = 0;    
     const mass = 100;
 
-    let chunkRadiusThing = Math.ceil(smoothingRadius / chunkSize);
-    let chunkX = Math.floor(x/chunkSize)
-    let chunkY = Math.floor(y/chunkSize)
-    let minX = chunkX - chunkRadiusThing
-    let maxX = chunkX+chunkRadiusThing*2;
-    let minY = chunkY - chunkRadiusThing;
-    let maxY = chunkY+chunkRadiusThing*2;
-    for(let tmpX = minX; tmpX < maxX; tmpX++){
-        for(let tmpY = minY; tmpY < maxY; tmpY++){
-            let chunklength = chunks[tmpX+","+tmpY]?.length;
-            for(let i = 0; i< chunklength; i++){
-                let particle = chunks[tmpX+","+tmpY][i];
-                let dst = distance(particle.x,particle.y,x,y);
-                let influence = smoothingKernel(dst,smoothingRadius);
-                let nearInfluence = nearSmoothingKernel(dst,smoothingRadius);
-                density += mass * influence;
-                nearDensity += mass*nearInfluence;
-            }
-        }
-    }
-
+    foreachPointWithinRadius({x:x,y:y}).forEach(particle => {
+        let dst = distance(particle.x,particle.y,x,y);
+        let influence = smoothingKernel(dst,smoothingRadius);
+        let nearInfluence = nearSmoothingKernel(dst,smoothingRadius);
+        density += mass * influence;
+        nearDensity += mass*nearInfluence;
+    })
     return {
         density:density,
         nearDensity:nearDensity
@@ -140,35 +130,27 @@ function calculatePressureForce(particleIndex){
         x:0,
         y:0
     }
-    let chunkRadiusThing = Math.ceil(smoothingRadius / chunkSize);
-    let minX = particles[particleIndex].chunkX - chunkRadiusThing
-    let maxX = particles[particleIndex].chunkX+chunkRadiusThing*2;
-    let minY = particles[particleIndex].chunkY - chunkRadiusThing;
-    let maxY = particles[particleIndex].chunkY+chunkRadiusThing*2;
-    for(let x = minX; x < maxX; x++){
-        for(let y = minY; y < maxY; y++){
-            let chunklength = chunks[x+","+y]?.length;
-            for(let i = 0; i< chunklength; i++){
-                if(particles[particleIndex] == chunks[x+","+y][i]) continue;
-                let particle = chunks[x+","+y][i];
-                let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
-                let dir = {
-                    x:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
-                    y:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
-                }
-                let slope = smoothingKernelDerivative(dst,smoothingRadius);
-                if(slope == 0) continue
-                let density = particle.density;
-                let nearDensity = particle.nearDensity;
-                let sharedPressure = calculateSharedPressure(density,nearDensity,particles[particleIndex].density,particles[particleIndex].nearDensity);
-                pressureForce.x += (density != 0) ? (-sharedPressure.pressure * dir.x * slope * mass / density) : 0;
-                pressureForce.x += (density != 0) ? (-sharedPressure.nearPressure * dir.x * slope * mass / density) : 0;
-                pressureForce.y += (density != 0) ? (-sharedPressure.pressure * dir.y * slope * mass / density) : 0;
-                pressureForce.y += (density != 0) ? (-sharedPressure.nearPressure * dir.y * slope * mass / density) : 0;
-            }
+    let particlesWithinRange = foreachPointWithinRadius(particles[particleIndex])
+    let length = particlesWithinRange.length;
+    for(let i = 0; i< length; i++){
+        if(particles[particleIndex] == particlesWithinRange[i]) continue;
+        let particle = particlesWithinRange[i];
+        let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
+        let dir = {
+            x:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
+            y:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
         }
+        let slope = smoothingKernelDerivative(dst,smoothingRadius);
+        if(slope == 0) continue
+        let density = particle.density;
+        let nearDensity = particle.nearDensity;
+        let sharedPressure = calculateSharedPressure(density,nearDensity,particles[particleIndex].density,particles[particleIndex].nearDensity);
+        pressureForce.x += (density != 0) ? (-sharedPressure.pressure * dir.x * slope * mass / density) : 0;
+        pressureForce.x += (density != 0) ? (-sharedPressure.nearPressure * dir.x * slope * mass / density) : 0;
+        pressureForce.y += (density != 0) ? (-sharedPressure.pressure * dir.y * slope * mass / density) : 0;
+        pressureForce.y += (density != 0) ? (-sharedPressure.nearPressure * dir.y * slope * mass / density) : 0;
     }
-        
+                
     return pressureForce;
 }
 function calculateVescosityForce(particleIndex){
@@ -176,21 +158,21 @@ function calculateVescosityForce(particleIndex){
         x:0,
         y:0
     }
-    let chunkRadiusThing = Math.ceil(smoothingRadius / chunkSize);
-    for(let x = particles[particleIndex].chunkX - chunkRadiusThing; x < particles[particleIndex].chunkX+chunkRadiusThing*2; x++){
-        for(let y = particles[particleIndex].chunkY - chunkRadiusThing; y < particles[particleIndex].chunkY+chunkRadiusThing*2; y++){
-            for(let i = 0; i< chunks[x+","+y]?.length; i++){
-                if(particles[particleIndex] == chunks[x+","+y][i]) continue;
-                let particle = chunks[x+","+y][i];
+    let particlesWithinRange = foreachPointWithinRadius(particles[particleIndex])
+    let length = particlesWithinRange.length;
+    for(let i = 0; i< length; i++){
+        if(particles[particleIndex] == particlesWithinRange[i]) continue;
+        let particle = particlesWithinRange[i];
 
-                let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
-                let influence = viscositySmoothingKernel(dst,smoothingRadius);
-                
-                viscosityForce.x += (particle.vx - particles[particleIndex].vx) * influence *viscosityStrength;
-                viscosityForce.y += (particle.vy - particles[particleIndex].vy) * influence *viscosityStrength;
-            }
-        }
+        let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
+        let influence = viscositySmoothingKernel(dst,smoothingRadius);
+
+        
+        viscosityForce.x += (particle.vx - particles[particleIndex].vx) * influence *viscosityStrength;
+        viscosityForce.y += (particle.vy - particles[particleIndex].vy) * influence *viscosityStrength;
     }
+        
+    return viscosityForce;
 
 
 }
@@ -225,6 +207,61 @@ function getInteractionForce(inputPos,radius,strength,particle){
     }
     return force
 }
+function positionToCellCoord(x,y){
+    return {
+        x:Math.floor(x/chunkSize),
+        y:Math.floor(y/chunkSize)
+    }
+}
+function cellCoordToHash(cell){
+    return (15823 * cell.x) + (9737333 * cell.y);
+}
+function getKeyFromHash(hash){
+    return hash%particles.length;
+}
+
+
+function updateSpacialLookup(){
+    spacialLookup = [];
+    particles.forEach((particle,i) => {
+        let cell = positionToCellCoord(particle.predictedPosition.x,particle.predictedPosition.y);
+        let cellKey = getKeyFromHash(cellCoordToHash(cell));
+        spacialLookup[i] = {cellKey:cellKey,index:i};
+        startIndices[i] = Infinity;
+    })
+    spacialLookup.sort((a,b) => a.cellKey-b.cellKey);
+
+    particles.forEach((particle,i) => {
+        let key = spacialLookup[i].cellKey;
+        let keyPrev = i == 0 ? Infinity : spacialLookup[i-1].cellKey;
+        if(key != keyPrev){
+            startIndices[key] = i;
+        }
+    })
+}
+function foreachPointWithinRadius(samplePoint){
+    let cellCoord = positionToCellCoord(samplePoint.x,samplePoint.y);
+    let particlesWithinRange = [];
+
+    for(let x = cellCoord.x-1; x < cellCoord.x+2; x++){
+        for(let y = cellCoord.y-1; y < cellCoord.y+2; y++){
+            let key = getKeyFromHash(cellCoordToHash({x:x,y:y}))
+            let startIndex = startIndices[key];
+
+            for(let i = startIndex; i < spacialLookup.length; i++){
+                if(spacialLookup[i].cellKey != key) break;
+
+                let particleIndex = spacialLookup[i].index;
+                let particle = particles[particleIndex];
+                let dst = distance(samplePoint.x,samplePoint.y,particle.x,particle.y);
+                if(dst < smoothingRadius){
+                    particlesWithinRange.push(particle);
+                }
+            }
+        }
+    }
+    return particlesWithinRange;
+}
 
 
 
@@ -246,13 +283,6 @@ class Particle{
             x:x,
             y:y
         }
-        this.chunkX = Math.floor(this.x / chunkSize);
-        this.chunkY = Math.floor(this.y / chunkSize);
-
-        if(!chunks[this.chunkX + "," + this.chunkY]){
-            chunks[this.chunkX + "," + this.chunkY] = [];
-        }
-        chunks[this.chunkX + "," + this.chunkY].push(this); 
     }
     draw(){
         let grd = c.createRadialGradient(this.x, this.y,0, this.x, this.y, smoothingRadius);
@@ -275,6 +305,7 @@ class Particle{
     }
     updateVelocity(){
         let pressureForce = calculatePressureForce(this.i);
+        let viscosityForce = calculateVescosityForce(this.i);
         let interactionForce = {
             x:0,
             y:0
@@ -283,8 +314,8 @@ class Particle{
             interactionForce = getInteractionForce(mouse,100,mouse.which,this)
         }
         if(this.density !== 0){
-            this.vx += (pressureForce.x / this.density + interactionForce.x)*velocityMultiplier * deltaStepTime;
-            this.vy += (pressureForce.y / this.density + interactionForce.y)*velocityMultiplier * deltaStepTime;
+            this.vx += ((pressureForce.x) / this.density + interactionForce.x)*velocityMultiplier * deltaStepTime + viscosityForce.x;
+            this.vy += ((pressureForce.y) / this.density + interactionForce.y)*velocityMultiplier * deltaStepTime + viscosityForce.y;
         }
         this.vx = this.vx.clamp(-10,10)
         this.vy = this.vy.clamp(-10,10)
@@ -292,17 +323,6 @@ class Particle{
     updatePosition(){
         this.x += this.vx * deltaStepTime * deltaTime;
         this.y += this.vy * deltaStepTime * deltaTime;
-
-        if(this.chunkX != Math.floor(this.x / chunkSize) || this.chunkY != Math.floor(this.y / chunkSize)){
-            chunks[this.chunkX + "," + this.chunkY].splice(chunks[this.chunkX + "," + this.chunkY].indexOf(this),1);
-            this.chunkX = Math.floor(this.x / chunkSize);
-            this.chunkY = Math.floor(this.y / chunkSize);
-            if(!chunks[this.chunkX + "," + this.chunkY]){
-                chunks[this.chunkX + "," + this.chunkY] = [];
-            }
-            chunks[this.chunkX + "," + this.chunkY].push(this); 
-        }
-
 
         if(this.x+ this.radius> canvas.width || this.x- this.radius< 0 ){
             this.x -= this.vx * deltaStepTime * deltaTime;
@@ -317,6 +337,7 @@ class Particle{
 }
 async function step() {
     particles.forEach(e => e.predictPosition())
+    updateSpacialLookup()
     particles.forEach(e => e.updateDensity())
     particles.forEach(e => e.updateVelocity())
     particles.forEach(e => e.updatePosition())
