@@ -4,13 +4,13 @@ var smoothingRadius = 30;
 
 var targetDensity = 10;
 
-var pressureMultiplier = 120;
+var pressureMultiplier = 280;
 
-var gravity = 0.05;
+var gravity = 0.1;
 
 var viscosityStrength = 5
 
-var nearPressureMultiplier = 20;
+var nearPressureMultiplier = -200;
 
 
 const velocityMultiplier = 1;
@@ -26,7 +26,7 @@ window.onload = init;
 async function init() {
     fixCanvas();
 
-    spawnParticles(2000);
+    spawnParticles(1000);
     particles.forEach(e => {
         let tmp = calculateDensity(e.x,e.y)
         e.density = tmp.density
@@ -49,10 +49,10 @@ function update(){
 
     step();
 
-    //particles.forEach(e => e.draw());
-    particles.forEach(e => {
+    particles.forEach(e => e.draw());
+    /*particles.forEach(e => {
         drawCircle(e.x,e.y,5,"rgb("+distance(e.vx,e.vy,0,0)*100+",0,0)")
-    })
+    })*/
 
     renderC.imageSmoothingEnabled = false;
     renderC.drawImage(canvas, 0, 0, renderCanvas.width, renderCanvas.height);
@@ -137,8 +137,8 @@ function calculatePressureForce(particleIndex){
         let particle = particlesWithinRange[i];
         let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
         let dir = {
-            x:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
-            y:(dst < 0.1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
+            x:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
+            y:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
         }
         let slope = smoothingKernelDerivative(dst,smoothingRadius);
         if(slope == 0) continue
@@ -286,8 +286,7 @@ class Particle{
     }
     draw(){
         let grd = c.createRadialGradient(this.x, this.y,0, this.x, this.y, smoothingRadius);
-        grd.addColorStop(0, "rgba(0,0,255,0.2)");
-        grd.addColorStop(0.5, "rgba(0,0,255,0.1)");
+        grd.addColorStop(0, "rgba(0,0,255,0.4)");
         grd.addColorStop(1, "rgba(0,0,255,0)");
         drawCircle(this.x,this.y,smoothingRadius,grd)
     }
@@ -311,7 +310,7 @@ class Particle{
             y:0
         }
         if(mouse.down){
-            interactionForce = getInteractionForce(mouse,100,mouse.which,this)
+            interactionForce = getInteractionForce(mouse,400,mouse.which,this)
         }
         if(this.density !== 0){
             this.vx += ((pressureForce.x) / this.density + interactionForce.x)*velocityMultiplier * deltaStepTime + viscosityForce.x;
