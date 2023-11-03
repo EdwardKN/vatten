@@ -1,22 +1,23 @@
 var particles = [];
 
-var smoothingRadius = 30;
+const smoothingRadius = 20;
 
-var targetDensity = 10;
+var targetDensity = 2;
 
-var pressureMultiplier = 280;
+var pressureMultiplier = 50000;
 
-var gravity = 0.1;
+var gravity = 1;
 
-var viscosityStrength = 5
+var viscosityStrength = 1000;
 
-var nearPressureMultiplier = -200;
+var nearPressureMultiplier = 100;
 
 
-const velocityMultiplier = 1;
+var velocityMultiplier = 1;
 const bounceFactor = 0.8;
 
 const chunkSize = smoothingRadius;
+var simulationStepsPerFrame = 6;
 
 var spacialLookup = [];
 var startIndices = [];
@@ -26,7 +27,7 @@ window.onload = init;
 async function init() {
     fixCanvas();
 
-    spawnParticles(1000);
+    spawnParticles(1000,400);
     particles.forEach(e => {
         let tmp = calculateDensity(e.x,e.y)
         e.density = tmp.density
@@ -47,7 +48,9 @@ function update(){
     c.font = "50px Arial"
     c.fillText(fps, 20, 40)
 
-    step();
+    for(let i = 0; i < simulationStepsPerFrame; i++){
+        step();
+    }
 
     particles.forEach(e => e.draw());
     /*particles.forEach(e => {
@@ -61,10 +64,12 @@ function update(){
 
 
 
-function spawnParticles(amount){
+function spawnParticles(amount,spawnSize){
     for(let i = 0; i < amount; i++){
-        let x = randomIntFromRange(20,canvas.width-20)
-        let y = randomIntFromRange(400,canvas.height-20)
+        let centerX = canvas.width/2;
+        let centerY = canvas.height/2;
+        let x = randomIntFromRange(centerX-spawnSize,centerX+spawnSize)
+        let y = randomIntFromRange(centerY-spawnSize,centerY+spawnSize)
         let particle = new Particle(x,y,particles.length);
 
         particles.push(particle);
@@ -153,7 +158,7 @@ function calculatePressureForce(particleIndex){
                 
     return pressureForce;
 }
-function calculateVescosityForce(particleIndex){
+function calculateViscosityForce(particleIndex){
     let viscosityForce = {
         x:0,
         y:0
@@ -197,12 +202,12 @@ function getInteractionForce(inputPos,radius,strength,particle){
         let dirX = (particle.x - inputPos.x) / dst;
         let dirY = (particle.y - inputPos.y) / dst;
 
-        let forceStrength = (dst/5) / radius;
+        let forceStrength = (dst/2) / radius;
 
         let centreT = 1 - dst / radius;
 
-        force.x = dirX * (strength == 3 ? 5 : -5)*forceStrength - particle.vx * centreT
-        force.y = dirY * (strength == 3 ? 5 : -5)*forceStrength - particle.vy * centreT
+        force.x = dirX * (strength == 3 ? 10 : -10)*forceStrength - particle.vx * centreT
+        force.y = dirY * (strength == 3 ? 10 : -10)*forceStrength - particle.vy * centreT
         
     }
     return force
@@ -293,8 +298,8 @@ class Particle{
     predictPosition(){
         this.vy += gravity*velocityMultiplier * deltaStepTime;
         this.predictedPosition = {
-            x:this.x + this.vx * deltaStepTime * deltaTime,
-            y:this.y + this.vy * deltaStepTime * deltaTime
+            x:this.x + this.vx * deltaStepTime * deltaTime * velocityMultiplier,
+            y:this.y + this.vy * deltaStepTime * deltaTime * velocityMultiplier
         }
     }
     updateDensity(){
@@ -304,7 +309,7 @@ class Particle{
     }
     updateVelocity(){
         let pressureForce = calculatePressureForce(this.i);
-        let viscosityForce = calculateVescosityForce(this.i);
+        let viscosityForce = calculateViscosityForce(this.i);
         let interactionForce = {
             x:0,
             y:0
@@ -320,15 +325,15 @@ class Particle{
         this.vy = this.vy.clamp(-10,10)
     }
     updatePosition(){
-        this.x += this.vx * deltaStepTime * deltaTime;
-        this.y += this.vy * deltaStepTime * deltaTime;
+        this.x += this.vx * deltaStepTime * deltaTime * velocityMultiplier;
+        this.y += this.vy * deltaStepTime * deltaTime * velocityMultiplier;
 
         if(this.x+ this.radius> canvas.width || this.x- this.radius< 0 ){
-            this.x -= this.vx * deltaStepTime * deltaTime;
+            this.x -= this.vx * deltaStepTime * deltaTime *velocityMultiplier;
             this.vx *= -bounceFactor;
         }
         if(this.y+ this.radius> canvas.height || this.y- this.radius< 0 ){
-            this.y -= this.vy * deltaStepTime * deltaTime;
+            this.y -= this.vy * deltaStepTime * deltaTime *velocityMultiplier;
             this.vy *= -bounceFactor;
         }
     }
@@ -342,4 +347,4 @@ async function step() {
     particles.forEach(e => e.updatePosition())
 };
 
-let deltaStepTime = 1;
+let deltaStepTime = 1/simulationStepsPerFrame;
