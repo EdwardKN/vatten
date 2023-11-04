@@ -326,7 +326,9 @@ window.addEventListener('keyup', function (e) {
 })
 
 Number.prototype.clamp = function (min, max) {
-    return Math.min(Math.max(this, min), max);
+    if(this < min) return min;
+    if(this > max) return max;
+    return this;
 };
 
 function angleFromPoints(x, y, x2, y2) {

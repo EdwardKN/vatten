@@ -1,23 +1,23 @@
 var particles = [];
 
-const smoothingRadius = 20;
+const smoothingRadius = 30;
 
-var targetDensity = 2;
+var targetDensity = 0.1;
 
-var pressureMultiplier = 50000;
+var pressureMultiplier = 50;
 
 var gravity = 1;
 
 var viscosityStrength = 1000;
 
-var nearPressureMultiplier = 100;
+var nearPressureMultiplier = 50000;
 
 
 var velocityMultiplier = 1;
 const bounceFactor = 0.8;
 
 const chunkSize = smoothingRadius;
-var simulationStepsPerFrame = 6;
+var simulationStepsPerFrame = 3;
 
 var spacialLookup = [];
 var startIndices = [];
@@ -97,9 +97,10 @@ function viscositySmoothingKernel(dst,radius){
 
 function nearSmoothingKernel(dst,radius){
     if(dst >= radius) return 0;
+    let tmp = radius-dst;
 
     let volume = 2 * Math.PI * Math.pow(radius,6) / 15;
-    return Math.pow(radius-dst,4) / volume
+    return tmp * tmp * tmp * tmp / volume
 }
 
 function calculateDensity(x,y){
@@ -123,7 +124,7 @@ function calculateDensity(x,y){
 function convertDensityToPressure(density,nearDensity){
     let densityError = density-targetDensity;
     let pressure = densityError * pressureMultiplier;
-    let nearPressure = nearDensity * nearPressureMultiplier;
+    let nearPressure = nearDensity * -nearPressureMultiplier;
     return {
         pressure:pressure,
         nearPressure:nearPressure
@@ -142,8 +143,8 @@ function calculatePressureForce(particleIndex){
         let particle = particlesWithinRange[i];
         let dst = distance(particle.predictedPosition.x,particle.predictedPosition.y,particles[particleIndex].predictedPosition.x,particles[particleIndex].predictedPosition.y);
         let dir = {
-            x:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
-            y:(dst < 1) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
+            x:(dst ==0) ? Math.random()-Math.random()*2 :(particle.predictedPosition.x-particles[particleIndex].predictedPosition.x)/dst,
+            y:(dst ==0) ? Math.random()-Math.random()*2 :(particle.predictedPosition.y-particles[particleIndex].predictedPosition.y)/dst,
         }
         let slope = smoothingKernelDerivative(dst,smoothingRadius);
         if(slope == 0) continue
@@ -221,16 +222,17 @@ function positionToCellCoord(x,y){
 function cellCoordToHash(cell){
     return (15823 * cell.x) + (9737333 * cell.y);
 }
-function getKeyFromHash(hash){
-    return hash%particles.length;
+function getKeyFromHash(hash,particleLength){
+    return hash%particleLength;
 }
 
 
 function updateSpacialLookup(){
     spacialLookup = [];
+    let particleLength = particles.length;
     particles.forEach((particle,i) => {
         let cell = positionToCellCoord(particle.predictedPosition.x,particle.predictedPosition.y);
-        let cellKey = getKeyFromHash(cellCoordToHash(cell));
+        let cellKey = getKeyFromHash(cellCoordToHash(cell),particleLength);
         spacialLookup[i] = {cellKey:cellKey,index:i};
         startIndices[i] = Infinity;
     })
@@ -247,13 +249,14 @@ function updateSpacialLookup(){
 function foreachPointWithinRadius(samplePoint){
     let cellCoord = positionToCellCoord(samplePoint.x,samplePoint.y);
     let particlesWithinRange = [];
-
+    let length = spacialLookup.length;
+    let particleLength = particles.length;
     for(let x = cellCoord.x-1; x < cellCoord.x+2; x++){
         for(let y = cellCoord.y-1; y < cellCoord.y+2; y++){
-            let key = getKeyFromHash(cellCoordToHash({x:x,y:y}))
+            let key = getKeyFromHash(cellCoordToHash({x:x,y:y}),particleLength)
             let startIndex = startIndices[key];
-
-            for(let i = startIndex; i < spacialLookup.length; i++){
+             
+            for(let i = startIndex; i < length; i++){
                 if(spacialLookup[i].cellKey != key) break;
 
                 let particleIndex = spacialLookup[i].index;
